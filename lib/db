@@ -1,4 +1,4 @@
-// lib/db'
+// lib/db
 // Connexion MySQL poolée pour Hostinger + helpers typés
 // Usage : import { query, getUser, createTransaction } from '@/lib/db'
 
