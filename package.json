@@ -3,28 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev":   "next dev",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint":  "next lint"
+    "lint": "next lint"
   },
   "dependencies": {
-   "next": "14.2.30",
-"eslint-config-next": "14.2.30",
-    "react":                  "^18",
-    "react-dom":              "^18",
-    "mysql2":                 "^3.9.0",
-    "@google/generative-ai":  "^0.17.0",
-    "recharts":               "^2.12.0",
-    "jose":                   "^5.6.0"
+    "next": "14.2.30",
+    "react": "^18",
+    "react-dom": "^18",
+    "mysql2": "^3.9.0",
+    "@google/generative-ai": "^0.17.0",
+    "recharts": "^2.12.0",
+    "jose": "^5.6.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8",
+    "autoprefixer": "^10"
   },
   "devDependencies": {
-    "@types/node":   "^20",
-    "@types/react":  "^18",
-    "eslint":        "^8",
-    "eslint-config-next": "14.2.0",
-    "tailwindcss":   "^3.4.0",
-    "postcss":       "^8",
-    "autoprefixer":  "^10"
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.30"
   }
 }
