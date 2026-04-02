@@ -11,6 +11,8 @@ const PUBLIC_PATHS = [
   '/auth/login',
   '/auth/verify',
   '/pricing',
+  '/mentions-legales',
+  '/confidentialite',
   '/api/auth/magic-link',
   '/api/auth/verify',
   '/api/webhook',
