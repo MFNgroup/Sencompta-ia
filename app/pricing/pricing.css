@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=DM+Mono:wght@500&display=swap');
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0D1B14; color: #EDE8DC; font-family: 'IBM Plex Sans', sans-serif; }
-.pricing-page { min-height: 100vh; padding: 60px 24px; }
+.pricing-page { min-height: 100vh; padding: 60px 24px 80px; }
 .pricing-header { text-align: center; max-width: 600px; margin: 0 auto 56px; }
 .pricing-eyebrow { display: inline-block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #C9A84C; background: rgba(201,168,76,0.08); border: 1px solid rgba(201,168,76,0.25); padding: 4px 14px; border-radius: 20px; margin-bottom: 16px; }
 .pricing-title { font-family: 'Playfair Display', serif; font-size: clamp(2rem, 5vw, 3rem); line-height: 1.15; margin-bottom: 12px; }
@@ -9,6 +9,7 @@ body { background: #0D1B14; color: #EDE8DC; font-family: 'IBM Plex Sans', sans-s
 .pricing-sub { font-size: 0.95rem; color: #8A9E8F; line-height: 1.6; }
 .alert { max-width: 480px; margin: 0 auto 32px; padding: 12px 18px; border-radius: 10px; font-size: 0.85rem; text-align: center; }
 .alert.error { background: rgba(224,123,84,0.1); border: 1px solid rgba(224,123,84,0.3); color: #E07B54; }
+.alert.success { background: rgba(76,175,125,0.1); border: 1px solid rgba(76,175,125,0.3); color: #4CAF7D; }
 .plans-grid { display: flex; gap: 24px; justify-content: center; max-width: 900px; margin: 0 auto; flex-wrap: wrap; }
 .plan-card { flex: 1; min-width: 280px; max-width: 400px; background: #122019; border: 1px solid #1E3328; border-radius: 20px; padding: 36px 32px; position: relative; overflow: hidden; transition: transform 0.25s; }
 .plan-card:hover { transform: translateY(-4px); }
@@ -35,6 +36,23 @@ body { background: #0D1B14; color: #EDE8DC; font-family: 'IBM Plex Sans', sans-s
 .btn-plan:disabled { opacity: 0.5; cursor: not-allowed; }
 .payment-methods { text-align: center; margin-top: 40px; }
 .pm-title { font-size: 0.75rem; color: #8A9E8F; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+.pm-logos { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.pm-logo { background: #122019; border: 1px solid #1E3328; border-radius: 8px; padding: 8px 16px; font-size: 0.82rem; font-weight: 600; color: #EDE8DC; }
+.continuity-banner { max-width: 860px; margin: 36px auto 0; padding: 20px 28px; background: rgba(201,168,76,0.06); border: 1px solid rgba(201,168,76,0.2); border-radius: 14px; display: flex; align-items: flex-start; gap: 16px; }
+.continuity-icon { color: #C9A84C; flex-shrink: 0; margin-top: 2px; }
+.continuity-title { font-weight: 600; font-size: 0.9rem; color: #C9A84C; margin-bottom: 4px; }
+.continuity-text { font-size: 0.82rem; color: #8A9E8F; line-height: 1.6; }
+.faq { max-width: 640px; margin: 56px auto 0; }
+.faq-title { font-family: 'Playfair Display', serif; text-align: center; font-size: 1.4rem; margin-bottom: 24px; }
+.faq-item { border-bottom: 1px solid #1E3328; padding: 16px 0; }
+.faq-q { font-weight: 600; font-size: 0.9rem; margin-bottom: 6px; }
+.faq-a { font-size: 0.83rem; color: #8A9E8F; line-height: 1.6; }
+.top-nav { display: flex; justify-content: space-between; align-items: center; max-width: 900px; margin: 0 auto 48px; padding-bottom: 20px; border-bottom: 1px solid #1E3328; }
+.nav-logo { font-family: 'Playfair Display', serif; color: #C9A84C; font-size: 1.3rem; text-decoration: none; }
+.nav-links { display: flex; gap: 20px; align-items: center; }
+.nav-link { font-size: 0.85rem; color: #8A9E8F; text-decoration: none; }
+.nav-link:hover { color: #EDE8DC; }
+.nav-cta { background: rgba(201,168,76,0.1); border: 1px solid rgba(201,168,76,0.3); color: #C9A84C; border-radius: 8px; padding: 6px 14px; font-size: 0.82rem; cursor: pointer; text-decoration: none; }.pm-title { font-size: 0.75rem; color: #8A9E8F; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
 .pm-logos { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; }
 .pm-logo { background: #122019; border: 1px solid #1E3328; border-radius: 8px; padding: 8px 16px; font-size: 0.82rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .faq { max-width: 640px; margin: 56px auto 0; }
