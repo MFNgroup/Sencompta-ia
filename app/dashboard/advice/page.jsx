@@ -4,8 +4,6 @@ import { useState, useEffect } from 'react';
 
 const fcfa = (n) => new Intl.NumberFormat('fr-SN').format(Math.abs(n)) + ' FCFA';
 
-export const metadata = { title: 'Conseils IA — SenCompta' };
-
 export default function AdvicePage() {
   const [advice, setAdvice]   = useState(null);
   const [loading, setLoading] = useState(false);
