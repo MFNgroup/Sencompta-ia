@@ -1,17 +1,15 @@
 // app/api/callback/payment/route.js
 import { NextResponse } from 'next/server';
 import { activateSubscription, getUserById, setMagicToken } from '@/lib/db';
-import { SignJWT } from 'jose';
 import crypto from 'crypto';
 
-// ── Envoyer le magic link via webhook Hostinger ───────────────
 async function sendMagicLinkWhatsApp(phone, token) {
-  const appUrl    = process.env.NEXT_PUBLIC_APP_URL;
-  const magicLink = `${appUrl}/api/auth/verify?token=${token}`;
+  const appUrl     = process.env.NEXT_PUBLIC_APP_URL;
+  const magicLink  = `${appUrl}/api/auth/verify?token=${token}`;
   const webhookUrl = process.env.WEBHOOK_URL;
 
   if (!webhookUrl) {
-    console.log('[PayTech] WEBHOOK_URL manquant — lien non envoyé');
+    console.log('[PayTech] WEBHOOK_URL manquant');
     return;
   }
 
@@ -36,7 +34,18 @@ async function sendMagicLinkWhatsApp(phone, token) {
     console.error('[PayTech] Erreur envoi WhatsApp:', err.message);
   }
 }
-    // ── Vérification signature ────────────────────────────────
+
+export async function POST(req) {
+  try {
+    const body   = await req.text();
+    const params = new URLSearchParams(body);
+
+    const type_event        = params.get('type_event');
+    const ref_command       = params.get('ref_command');
+    const custom_field_raw  = params.get('custom_field');
+    const api_key_sha256    = params.get('api_key_sha256');
+    const api_secret_sha256 = params.get('api_secret_sha256');
+
     const expectedKeyHash    = crypto.createHash('sha256').update(process.env.PAYTECH_API_KEY).digest('hex');
     const expectedSecretHash = crypto.createHash('sha256').update(process.env.PAYTECH_API_SECRET).digest('hex');
 
@@ -49,7 +58,6 @@ async function sendMagicLinkWhatsApp(phone, token) {
       return NextResponse.json({ status: 'ignored', type_event });
     }
 
-    // ── Extraire données custom ───────────────────────────────
     const custom = JSON.parse(custom_field_raw || '{}');
     const { user_id, plan, duration = 1 } = custom;
 
@@ -58,19 +66,14 @@ async function sendMagicLinkWhatsApp(phone, token) {
       return NextResponse.json({ error: 'Données insuffisantes' }, { status: 400 });
     }
 
-    // ── Activer l'abonnement ──────────────────────────────────
     await activateSubscription(user_id, plan, ref_command, duration);
     console.log(`[PayTech IPN] Abonnement ${plan} activé — user_id=${user_id}`);
 
-    // ── Générer et envoyer le magic link ──────────────────────
     const user = await getUserById(user_id);
     if (user?.phone) {
-      // Générer un token unique
       const token     = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       await setMagicToken(user_id, token, expiresAt);
-
-      // Envoyer via Hostinger
       await sendMagicLinkWhatsApp(user.phone, token);
     }
 
