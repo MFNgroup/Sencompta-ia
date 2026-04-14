@@ -16,7 +16,7 @@ const IconCheck = () => (
 
 const FEATURES = [
   { text: 'Saisie WhatsApp en français et wolof' },
-  { text: 'Analyse IA Gemini — conseils personnalisés' },
+  { text: 'Analyse IA — conseils personnalisés' },
   { text: 'Dashboard avec graphiques en temps réel' },
   { text: 'Connexion sans mot de passe — lien sécurisé' },
 ];
