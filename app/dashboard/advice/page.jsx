@@ -82,7 +82,7 @@ export default function AdvicePage() {
       </div>
 
       <div className="advice-content">
-        <div className="advice-badge">IA Premium — Gemini</div>
+        <div className="advice-badge">IA Premium</div>
 
         {!isPremium ? (
           <div style={{ background: '#122019', border: '1px solid #1E3328', borderRadius: 12, padding: 28, textAlign: 'center' }}>
@@ -128,7 +128,7 @@ export default function AdvicePage() {
         ) : loading ? (
           <div style={{ textAlign: 'center', padding: '48px 16px', color: '#8A9E8F' }}>
             <div className="spinner" />
-            <p style={{ fontSize: '0.85rem' }}>Gemini analyse vos transactions…</p>
+            <p style={{ fontSize: '0.85rem' }}>Sencompta analyse vos transactions…</p>
           </div>
         ) : advice ? (
           <>
