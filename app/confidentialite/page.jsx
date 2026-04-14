@@ -78,7 +78,7 @@ export default function Confidentialite() {
 
         <div className="legal-section">
           <h2>4. Rôle de l'intelligence artificielle</h2>
-          <p>SenCompta IA utilise <span className="highlight">Google Gemini</span> pour interpréter vos messages et générer des analyses. À ce titre :</p>
+          <p>SenCompta IA utilise <span className="highlight">un moteur d'analyse IA</span> pour interpréter vos messages et générer des analyses. À ce titre :</p>
           <ul>
             <li>Vos messages WhatsApp sont transmis à l'API Google Gemini pour traitement</li>
             <li>Google Gemini est soumis aux conditions d'utilisation de Google LLC</li>
