@@ -367,7 +367,7 @@ export default function DashboardPage() {
               <span className="section-title">Conseils IA</span>
             </div>
             <div className="ai-cta">
-              <div className="ai-badge">IA Premium — Gemini</div>
+              <div className="ai-badge">IA Premium</div>
               <div style={{fontFamily:"'Playfair Display',serif", fontSize:'1rem', marginBottom:6}}>
                 Conseils Stratégiques
               </div>
