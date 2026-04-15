@@ -8,6 +8,7 @@ const JWT_SECRET = new TextEncoder().encode(
 
 // Routes publiques — pas de vérification JWT
 const PUBLIC_PATHS = [
+  '/'
   '/auth/login',
   '/auth/verify',
   '/pricing',
