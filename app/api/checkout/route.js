@@ -1,6 +1,7 @@
 // app/api/checkout/route.js
 import { NextResponse } from 'next/server';
-import { getUserFromSession, upsertUser } from '@/lib/auth';
+import { getUserFromSession } from '@/lib/auth';
+import { upsertUser } from '@/lib/db';
 
 const PLANS = {
   STANDARD: { label: 'SenCompta Standard — 1 mois', amount: 10000, duration: 1 },
