@@ -1,4 +1,3 @@
-// app/api/checkout/route.js
 import { NextResponse } from 'next/server';
 import { getUserFromSession } from '@/lib/auth';
 import { upsertUser } from '@/lib/db';
@@ -17,22 +16,19 @@ export async function POST(req) {
     return NextResponse.json({ error: 'Plan invalide' }, { status: 400 });
   }
 
-  // Récupérer l'utilisateur connecté OU créer depuis le numéro fourni
   let user = await getUserFromSession(req);
 
   if (!user && phone) {
-    // Nouveau client — créer le compte depuis le numéro
-    const { getUser, upsertUser: upsert } = await import('@/lib/db');
     const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
-    user = await upsert(normalizedPhone);
+    user = await upsertUser(normalizedPhone);
   }
 
   if (!user) {
     return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
   }
 
-  const ref     = `SC-${user.id}-${plan}-${Date.now()}`;
-  const appUrl  = process.env.NEXT_PUBLIC_APP_URL;
+  const ref    = `SC-${user.id}-${plan}-${Date.now()}`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
   const payload = {
     item_name:    selectedPlan.label,
@@ -47,7 +43,6 @@ export async function POST(req) {
     custom_field: JSON.stringify({ user_id: user.id, plan, duration: selectedPlan.duration }),
   };
 
-  // Passer par Hostinger pour contourner la restriction Vercel
   const webhookUrl = process.env.WEBHOOK_URL;
   const secret     = process.env.WEBHOOK_SECRET;
 
@@ -58,10 +53,7 @@ export async function POST(req) {
   try {
     const resp = await fetch(`${webhookUrl}/checkout.php`, {
       method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Secret':     secret,
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Secret': secret },
       body: JSON.stringify({
         payload,
         api_key:    process.env.PAYTECH_API_KEY,
