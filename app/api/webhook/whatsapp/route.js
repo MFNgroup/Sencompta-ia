@@ -1,5 +1,5 @@
-// app/api/webhook/whatsapp/route.js
-// Webhook WhatsApp via Twilio Sandbox
+// app/api/webhook/whatsapp/route.js — SenCompta IA v2
+// Corrections : gemini-2.5-flash + plan FREE (20 tx/mois, WhatsApp uniquement)
 
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -8,6 +8,7 @@ import {
   getRecentTransactions, getKPIs, getKPIsForDate,
   createDebt, getDebts, markDebtPaid,
   createPendingValidation,
+  isSubscriptionActive, getMonthlyTxCount, PLAN_LIMITS,
 } from '@/lib/db';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -24,8 +25,7 @@ PERSONNALITÉ :
 - Chaleureux, bienveillant, direct et spontané
 - Tu tutoies l'utilisateur naturellement
 - Tu es parfaitement bilingue français-wolof — tu réponds dans la langue du message ou en mélange naturel (franwolof)
-- Tu utilises librement les expressions wolof, les tournures locales pour créer de la proximité
-- Tu peux dire "waaw", "dëkk", "naka nga def", "bu baax na", "yëgël na" naturellement
+- Tu utilises librement les expressions wolof : "waaw", "dëkk", "naka nga def", "bu baax na", "yëgël na"
 - Tu es précis sur les chiffres, jamais vague
 
 RÔLE STRICT :
@@ -33,14 +33,12 @@ RÔLE STRICT :
 - Tu fournis des analyses basées UNIQUEMENT sur les données réelles fournies dans le contexte
 - Tu NE génères JAMAIS de chiffres inventés
 - Tu NE fais PAS de conseil juridique, fiscal officiel ou médical
-- Pour les conseils financiers importants, tu rappelles que tu es un assistant automatisé
 
 COMMANDES RECONNUES :
 1. RECETTE — "vendu", "reçu", "encaissé", "yëgël", "jaay", "bind"
 2. DÉPENSE — "payé", "acheté", "dépensé", "jënd", "fey"
 3. CRÉANCE — "doit", "crédit", "bokk", "jox crédit"
-4. BILAN — "solde", "bilan", "combien", "naka", "résumé"
-   Périodes : TODAY, 7, 30, 365
+4. BILAN — "solde", "bilan", "combien", "naka", "résumé" | Périodes : TODAY, 7, 30, 365
 5. HISTORIQUE — "historique", "liste", "transactions"
 6. CRÉANCES — "mes dettes", "qui me doit"
 7. AIDE — "aide", "help", "comment"
@@ -62,7 +60,6 @@ RÈGLES :
 - Catégories disponibles : ${[...CATEGORIES.RECETTE, ...CATEGORIES.DEPENSE].join(', ')}
 - Ne JAMAIS inventer des chiffres`;
 
-// ── Envoyer un message via Twilio ─────────────────────────────
 async function sendWhatsAppMessage(to, message) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken  = process.env.TWILIO_AUTH_TOKEN;
@@ -73,7 +70,6 @@ async function sendWhatsAppMessage(to, message) {
     return;
   }
 
-  // Normaliser le numéro destinataire
   const toFormatted = to.startsWith('whatsapp:') ? to : `whatsapp:${to.startsWith('+') ? to : '+' + to}`;
 
   try {
@@ -101,7 +97,6 @@ async function sendWhatsAppMessage(to, message) {
   }
 }
 
-// ── Construire le contexte utilisateur ───────────────────────
 async function buildUserContext(userId) {
   const [transactions, kpis, debts] = await Promise.all([
     getRecentTransactions(userId, 30),
@@ -110,7 +105,7 @@ async function buildUserContext(userId) {
   ]);
 
   const lastTx = transactions.slice(0, 5).map(t =>
-    `${t.date} | ${t.type} | ${t.montant.toLocaleString('fr-SN')} FCFA | ${t.libelle}`
+    `${t.date} | ${t.type} | ${Number(t.montant).toLocaleString('fr-SN')} FCFA | ${t.libelle}`
   ).join('\n');
 
   const debtsActives = debts.filter(d => d.status === 'PENDING' || d.status === 'UNPAID');
@@ -128,29 +123,34 @@ CRÉANCES ACTIVES : ${debtsActives.length} client(s) — Total : ${
   } FCFA`;
 }
 
-// ── Traiter un message entrant ────────────────────────────────
 async function processMessage(phone, messageText) {
   const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
 
+  // ── Upsert user (toujours FREE par défaut) ────────────────
   let user = await getUser(normalizedPhone);
   if (!user) {
     user = await upsertUser(normalizedPhone);
     await sendWhatsAppMessage(phone,
-      `Bienvenue sur SenCompta IA !\n\nJe suis ton assistant comptable intelligent. Pour commencer, abonne-toi sur ${process.env.NEXT_PUBLIC_APP_URL}/pricing\n\nUne fois abonné, tu pourras enregistrer tes recettes et dépenses directement ici !`
+      `Bienvenue sur *SenCompta IA* !\n\nJe suis ton assistant comptable. Tu es sur le *plan gratuit* — 20 transactions/mois via WhatsApp.\n\nCommence maintenant :\n- "vendu tissus 25 000"\n- "payé transport 3 500"\n- "mon solde"\n\nPour le dashboard, factures et plus : ${process.env.NEXT_PUBLIC_APP_URL}/pricing`
     );
     return;
   }
 
-  const isActive = user.subscription_expiry && new Date(user.subscription_expiry) > new Date();
-  if (!isActive) {
+  // ── Vérifier accès ────────────────────────────────────────
+  if (!isSubscriptionActive(user)) {
     await sendWhatsAppMessage(phone,
-      `Ton abonnement SenCompta IA est expiré.\n\nRenouvelle-le ici : ${process.env.NEXT_PUBLIC_APP_URL}/pricing`
+      `Ton abonnement SenCompta IA est expiré.\n\nRenouvelle ici : ${process.env.NEXT_PUBLIC_APP_URL}/pricing`
     );
     return;
   }
+
+  // ── Vérifier limite mensuelle (plan FREE) ─────────────────
+  const limits = PLAN_LIMITS[user.plan] || PLAN_LIMITS.FREE;
 
   const userContext = await buildUserContext(user.id);
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  // ── IA : Gemini 2.5 Flash ─────────────────────────────────
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
   const prompt = `${SYSTEM_PROMPT}\n\n${userContext}\n\nMessage : "${messageText}"\nDate : ${new Date().toISOString().slice(0, 10)}\n\nRéponds UNIQUEMENT en JSON valide.`;
 
@@ -176,6 +176,18 @@ async function processMessage(phone, messageText) {
         await sendWhatsAppMessage(phone, message_utilisateur || "Je n'ai pas compris le montant. Peux-tu préciser ?");
         return;
       }
+
+      // Vérifier limite FREE avant d'enregistrer
+      if (limits.txPerMonth !== Infinity) {
+        const monthCount = await getMonthlyTxCount(user.id);
+        if (monthCount >= limits.txPerMonth) {
+          await sendWhatsAppMessage(phone,
+            `Tu as utilisé tes 20 transactions gratuites ce mois.\n\nPasse au plan Standard pour continuer sans limite + accès dashboard, factures, créances : ${process.env.NEXT_PUBLIC_APP_URL}/pricing`
+          );
+          return;
+        }
+      }
+
       if (needs_confirmation) {
         const pendingId = await createPendingValidation(user.id, transaction);
         await sendWhatsAppMessage(phone, `${message_utilisateur}\n\nConfirme avec OUI ou annule avec NON (réf: ${pendingId})`);
@@ -190,7 +202,19 @@ async function processMessage(phone, messageText) {
         source:    'WHATSAPP',
         date:      transaction.date || new Date().toISOString().slice(0, 10),
       });
-      await sendWhatsAppMessage(phone, message_utilisateur);
+
+      // Avertissement proche de la limite FREE
+      if (limits.txPerMonth !== Infinity) {
+        const newCount = await getMonthlyTxCount(user.id);
+        const remaining = limits.txPerMonth - newCount;
+        let suffix = '';
+        if (remaining <= 3) {
+          suffix = `\n\n_Il te reste ${remaining} transaction(s) gratuites ce mois. Passe au Standard : ${process.env.NEXT_PUBLIC_APP_URL}/pricing_`;
+        }
+        await sendWhatsAppMessage(phone, message_utilisateur + suffix);
+      } else {
+        await sendWhatsAppMessage(phone, message_utilisateur);
+      }
       break;
     }
 
@@ -224,7 +248,7 @@ async function processMessage(phone, messageText) {
         periode_label = days === 7 ? '7 derniers jours' : days === 365 ? "cette année" : 'ce mois';
       }
       await sendWhatsAppMessage(phone,
-        `Bilan — ${periode_label}\n\n` +
+        `*Bilan — ${periode_label}*\n\n` +
         `Recettes : ${kpis.ca.toLocaleString('fr-SN')} FCFA\n` +
         `Dépenses : ${kpis.charges.toLocaleString('fr-SN')} FCFA\n` +
         `Net : ${kpis.net >= 0 ? '+' : ''}${kpis.net.toLocaleString('fr-SN')} FCFA\n\n` +
@@ -251,24 +275,28 @@ async function processMessage(phone, messageText) {
 
     case 'SALUTATION': {
       const kpis = await getKPIs(user.id, 30);
+      const planMsg = user.plan === 'FREE'
+        ? `\n\n_Plan gratuit : 20 transactions/mois via WhatsApp.\nDashboard & factures : ${process.env.NEXT_PUBLIC_APP_URL}/pricing_`
+        : '';
       await sendWhatsAppMessage(phone,
         `Bonjour ! Je suis SenCompta IA, ton assistant comptable.\n\n` +
-        `Ce mois-ci : ${kpis.ca.toLocaleString('fr-SN')} FCFA de recettes\n\n` +
-        `Que puis-je enregistrer ?\n- Une recette : "vendu [article] [montant]"\n- Une dépense : "payé [article] [montant]"\n- Ton bilan : "mon solde"`
+        `Ce mois-ci : *${kpis.ca.toLocaleString('fr-SN')} FCFA* de recettes\n\n` +
+        `Que puis-je enregistrer ?\n- Une recette : "vendu [article] [montant]"\n- Une dépense : "payé [article] [montant]"\n- Ton bilan : "mon solde"` +
+        planMsg
       );
       break;
     }
 
     case 'AIDE': {
       await sendWhatsAppMessage(phone,
-        `SenCompta IA — Guide rapide\n\n` +
+        `*SenCompta IA — Guide rapide*\n\n` +
         `Recette : "vendu tissus 25 000"\n` +
         `Dépense : "payé transport 3 500"\n` +
         `Créance : "Amadou me doit 20 000"\n` +
         `Bilan : "mon solde" ou "bilan du mois"\n` +
         `Historique : "mes dernières transactions"\n\n` +
         `Je comprends le français et le wolof.\n` +
-        `Assistant automatisé — consulte un expert-comptable pour les décisions importantes.`
+        `Dashboard : ${process.env.NEXT_PUBLIC_APP_URL}/dashboard`
       );
       break;
     }
@@ -282,7 +310,6 @@ async function processMessage(phone, messageText) {
   }
 }
 
-// ── GET — Vérification Meta (gardé pour migration future) ────
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const mode      = searchParams.get('hub.mode');
@@ -294,10 +321,8 @@ export async function GET(req) {
   return new Response('OK', { status: 200 });
 }
 
-// ── POST — Réception des messages Twilio ─────────────────────
 export async function POST(req) {
   try {
-    // Twilio envoie du form-data, pas du JSON
     const formData = await req.formData();
     const body     = formData.get('Body')?.trim();
     const from     = formData.get('From')?.replace('whatsapp:', '') || '';
@@ -306,17 +331,14 @@ export async function POST(req) {
       return new Response('', { status: 200 });
     }
 
-    // Traitement asynchrone — répondre 200 immédiatement à Twilio
     processMessage(from, body).catch(err =>
       console.error('[Webhook processMessage error]', err)
     );
 
-    // Twilio attend une réponse TwiML vide
     return new Response(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { status: 200, headers: { 'Content-Type': 'text/xml' } }
     );
-
   } catch (err) {
     console.error('[Webhook POST error]', err);
     return new Response(

@@ -127,6 +127,38 @@ export default function DashboardPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // FREE wall — show upgrade prompt if data returns dashboard_locked
+  if (data?.error === 'dashboard_locked') {
+    return (
+      <div style={{
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+        minHeight:'60vh', padding:'32px 20px', textAlign:'center',
+      }}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#C9A84C" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{marginBottom:20}}>
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <div style={{fontFamily:"'Playfair Display',serif", fontSize:'1.4rem', color:'#EDE8DC', marginBottom:8}}>
+          Dashboard réservé aux abonnés
+        </div>
+        <p style={{color:'#8A9E8F', fontSize:'0.9rem', maxWidth:380, lineHeight:1.6, marginBottom:24}}>
+          Le plan gratuit te donne accès au bot WhatsApp (20 transactions/mois).
+          Passe au plan Standard pour débloquer le dashboard, les factures, les créances et les conseils IA.
+        </p>
+        <a href="/pricing" style={{
+          display:'inline-block', padding:'12px 28px',
+          background:'#1D9E75', color:'#fff', borderRadius:10,
+          fontWeight:600, fontSize:'0.95rem', textDecoration:'none',
+        }}>
+          Voir les abonnements
+        </a>
+        <p style={{color:'#8A9E8F', fontSize:'0.78rem', marginTop:16}}>
+          Le bot WhatsApp reste accessible gratuitement
+        </p>
+      </div>
+    );
+  }
+
   const kpis = data?.kpis || { ca:0, charges:0, net:0 };
 
   // ── Fix graph : trier par date et formater correctement ──

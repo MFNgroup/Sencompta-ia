@@ -1,17 +1,17 @@
 // app/api/ai-advice/route.js
 import { NextResponse } from 'next/server';
-import { getRecentTransactions, getKPIs } from '@/lib/db';
+import { getRecentTransactions, getKPIs, canAccessDashboard, PLAN_LIMITS } from '@/lib/db';
 import { getUserFromSession } from '@/lib/auth';
 
 export async function GET(req) {
   const user = await getUserFromSession(req);
   if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
 
-  if (user.plan !== 'PREMIUM') {
-    return NextResponse.json(
-      { error: 'Fonctionnalité réservée aux abonnés Premium' },
-      { status: 403 }
-    );
+  if (!canAccessDashboard(user)) {
+    return NextResponse.json({ error: 'dashboard_locked', upgradeUrl: '/pricing' }, { status: 403 });
+  }
+  if (!PLAN_LIMITS[user.plan]?.aiAdvice) {
+    return NextResponse.json({ error: 'Fonctionnalité réservée aux abonnés Standard et Premium' }, { status: 403 });
   }
 
   const [transactions, kpis] = await Promise.all([

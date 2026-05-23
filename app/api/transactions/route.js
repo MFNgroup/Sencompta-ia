@@ -1,19 +1,22 @@
 // app/api/transactions/route.js
-// CRUD transactions pour le Dashboard Web
+// Dashboard Web — bloqué pour plan FREE
 
 import { NextResponse } from 'next/server';
 import {
-  getRecentTransactions,
-  getKPIs,
-  getDailySeries,
-  getCategoryBreakdown,
-  createTransaction,
+  getRecentTransactions, getKPIs, getDailySeries,
+  getCategoryBreakdown, createTransaction, canAccessDashboard,
 } from '@/lib/db';
 import { getUserFromSession } from '@/lib/auth';
+
+const FREE_WALL = NextResponse.json(
+  { error: 'dashboard_locked', plan: 'FREE', upgradeUrl: '/pricing' },
+  { status: 403 }
+);
 
 export async function GET(req) {
   const user = await getUserFromSession(req);
   if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (!canAccessDashboard(user)) return FREE_WALL;
 
   const { searchParams } = new URL(req.url);
   const days = parseInt(searchParams.get('days') || '30');
@@ -31,6 +34,7 @@ export async function GET(req) {
 export async function POST(req) {
   const user = await getUserFromSession(req);
   if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+  if (!canAccessDashboard(user)) return FREE_WALL;
 
   const body = await req.json();
   const { type, montant, libelle, categorie, date } = body;
