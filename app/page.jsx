@@ -18,7 +18,6 @@ const STATS = [
   { val:10,  suffix:'k',  label:'FCFA/mois plan Standard' },
 ];
 
-const MARQUEE = ['WhatsApp','Wolof','Français','DGI 2026','IA Gemini','Sénégal','SYSCOHADA','Facturation','Trésorerie','Créances','Dashboard','Export PDF'];
 
 const MSGS_SEQUENCE = [
   { from:'user', text:'Vendu tissus wax 45 000' },
@@ -142,10 +141,6 @@ export default function LandingPage() {
           ease:'none',
           scrollTrigger: { trigger:'#hero', start:'top top', end:'bottom top', scrub:true },
         });
-
-        /* ── MARQUEE ────────────────────────────────────────────── */
-        const mq = document.querySelector('.mq-track');
-        if (mq) gsap.to(mq, { x:'-50%', duration:28, ease:'none', repeat:-1 });
 
         /* ── PROBLEM section ────────────────────────────────────── */
         gsap.from('.prob-left',  {
@@ -329,11 +324,6 @@ export default function LandingPage() {
       .pinp{flex:1;background:#0F1E12;border-radius:18px;padding:7px 13px;font-size:0.73rem;color:var(--txt3)}
       .phone-glow{position:absolute;bottom:-50px;left:50%;transform:translateX(-50%);width:180px;height:90px;background:var(--grn);opacity:0.07;border-radius:50%;filter:blur(40px);pointer-events:none}
 
-      /* MARQUEE */
-      .marquee-wrap{padding:22px 0;border-top:1px solid var(--brd2);border-bottom:1px solid var(--brd2);overflow:hidden;background:var(--s1)}
-      .mq-track{display:flex;gap:0;white-space:nowrap;will-change:transform}
-      .mq-item{display:inline-flex;align-items:center;gap:32px;padding:0 32px;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--txt2);font-family:'Syne',sans-serif;font-weight:600}
-      .mq-dot{width:4px;height:4px;border-radius:50%;background:var(--gold);flex-shrink:0}
 
       /* PROBLEM SECTION */
       .problem-section{padding:120px 48px;max-width:1300px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:80px;align-items:center}
@@ -499,15 +489,13 @@ export default function LandingPage() {
         <div>
           <div className="h1-wrap">
             <h1 className="hero-h1">
-              {'Gérez'.split('').map((c,i)=><span key={i} className="hero-word">{c}</span>)}
-              <span className="hero-word sp"> </span>
-              {'vos'.split('').map((c,i)=><span key={i} className="hero-word">{c}</span>)}
-              <span className="hero-word sp"> </span>
-              {'finances'.split('').map((c,i)=><span key={i} className="hero-word">{c}</span>)}
+              <span className="hero-word">Gérez&nbsp;</span>
+              <span className="hero-word">vos&nbsp;</span>
+              <span className="hero-word">finances</span>
               <br/>
-              {'en'.split('').map((c,i)=><span key={i} className="hero-word">{c}</span>)}
-              <span className="hero-word sp"> </span>
-              <em>{'un message.'.split('').map((c,i)=><span key={i} className="hero-word" style={{fontStyle:'inherit'}}>{c}</span>)}</em>
+              <span className="hero-word">en&nbsp;</span>
+              <span className="hero-word">un&nbsp;</span>
+              <em><span className="hero-word">message.</span></em>
             </h1>
           </div>
           <p className="hero-sub-text">
@@ -540,14 +528,6 @@ export default function LandingPage() {
       </div>
     </section>
 
-    {/* MARQUEE */}
-    <div className="marquee-wrap">
-      <div className="mq-track">
-        {[...MARQUEE,...MARQUEE,...MARQUEE,...MARQUEE].map((t,i)=>(
-          <span key={i} className="mq-item">{t}{i % MARQUEE.length !== MARQUEE.length-1 && <span className="mq-dot"/>}</span>
-        ))}
-      </div>
-    </div>
 
     {/* PROBLEM */}
     <div className="problem-section">
