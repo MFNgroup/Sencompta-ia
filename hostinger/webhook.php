@@ -181,6 +181,8 @@ function processVoice(string $rawPhone, string $mediaUrl, string $mimeType): voi
         sendWhatsApp($rawPhone, "Abonnement requis : " . APP_URL . "/pricing");
         return;
     }
+    sendWhatsApp($rawPhone, "🎤 Vocal reçu, je transcris...");
+
     $ch = curl_init($mediaUrl);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
