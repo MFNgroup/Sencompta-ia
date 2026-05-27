@@ -145,6 +145,65 @@ function sendWhatsApp(string $to, string $body): void {
     curl_close($ch);
 }
 
+
+// ── GEMINI AUDIO (transcription vocale wolof/français) ───────
+function transcribeAudio(string $audioBase64, string $mimeType): ?string {
+    $url  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" . GEMINI_KEY;
+    $body = json_encode([
+        'contents' => [[
+            'parts' => [
+                ['text' => "Transcris ce message vocal. La personne parle en wolof, français, ou les deux (franwolof). Retourne UNIQUEMENT la transcription brute, sans guillemets ni explication. Si inaudible, réponds : [inaudible]."],
+                ['inline_data' => ['mime_type' => $mimeType, 'data' => $audioBase64]],
+            ]
+        ]],
+        'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 300],
+    ]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_TIMEOUT        => 25,
+    ]);
+    $resp = curl_exec($ch);
+    if (curl_errno($ch)) { error_log("[GeminiAudio] " . curl_error($ch)); curl_close($ch); return null; }
+    curl_close($ch);
+    $data = json_decode($resp, true);
+    return trim($data['candidates'][0]['content']['parts'][0]['text'] ?? '') ?: null;
+}
+
+// ── TRAITE UN VOCAL ───────────────────────────────────────────
+function processVoice(string $rawPhone, string $mediaUrl, string $mimeType): void {
+    $db   = getDB();
+    $user = $db ? getOrCreateUser($db, '+' . preg_replace('/\D/', '', $rawPhone)) : null;
+    if (!$user || !isActive($user)) {
+        sendWhatsApp($rawPhone, "Abonnement requis : " . APP_URL . "/pricing");
+        return;
+    }
+    $ch = curl_init($mediaUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_USERPWD        => TWILIO_SID . ':' . TWILIO_AUTH,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $audioData = curl_exec($ch);
+    $err = curl_errno($ch);
+    curl_close($ch);
+    if ($err || !$audioData) {
+        sendWhatsApp($rawPhone, "Je n'ai pas pu lire le vocal. Réessaie ou écris ta transaction.");
+        return;
+    }
+    $transcription = transcribeAudio(base64_encode($audioData), $mimeType);
+    if (!$transcription || $transcription === '[inaudible]') {
+        sendWhatsApp($rawPhone, "Je n'ai pas bien entendu. Parle plus près du micro, ou écris ta transaction.");
+        return;
+    }
+    error_log("[Voice->Text] $rawPhone: $transcription");
+    processMessage($rawPhone, $transcription);
+}
+
 // ── GEMINI TEXT ───────────────────────────────────────────────
 function callGemini(string $prompt): ?array {
     $url  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" . GEMINI_KEY;
@@ -774,10 +833,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 register_shutdown_function(function() use ($from, $mediaUrl, $mediaType) {
                     processPhoto($from, $mediaUrl, $mediaType);
                 });
+            } elseif (str_starts_with($mediaType, 'audio/') && $mediaUrl) {
+                // ── MESSAGE VOCAL ────────────────────────────────
+                register_shutdown_function(function() use ($from, $mediaUrl, $mediaType) {
+                    processVoice($from, $mediaUrl, $mediaType);
+                });
             } else {
-                // Fichier non-image (PDF, audio, etc.) — ignorer ou informer
+                // Autre fichier (PDF, vidéo...) — ignorer
                 register_shutdown_function(function() use ($from) {
-                    sendWhatsApp($from, "Envoie-moi une photo de ton reçu ou ticket de caisse, ou saisis ta transaction en texte.");
+                    sendWhatsApp($from, "Envoie-moi une photo de reçu, un vocal, ou tape ta transaction en texte.");
                 });
             }
 
