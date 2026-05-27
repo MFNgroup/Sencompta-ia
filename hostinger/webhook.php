@@ -203,7 +203,15 @@ function processVoice(string $rawPhone, string $mediaUrl, string $mimeType): voi
         return;
     }
     error_log("[Voice->Text] $rawPhone: $transcription");
-    processMessage($rawPhone, $transcription);
+
+    // Stocker la transcription et demander confirmation à l'utilisateur
+    savePendingConfirmation($db, \$user['id'], ['type'=>'VOICE_CONFIRM','transcription'=>\$transcription]);
+
+    sendWhatsApp($rawPhone,
+        "🎤 J'ai compris :\n\n" .
+        "_\"$transcription\"_\n\n" .
+        "C'est correct ? Réponds *OUI* pour enregistrer ou *NON* pour annuler."
+    );
 }
 
 // ── GEMINI TEXT ───────────────────────────────────────────────
@@ -365,39 +373,74 @@ function processPhoto(string $rawPhone, string $mediaUrl, string $mimeType): voi
         return;
     }
 
-    // Enregistrer la transaction
-    createTransaction($db, $user['id'], [
+    // Préparer la transaction mais demander confirmation
+    $tx = [
         'type'      => $result['type'] ?? 'DEPENSE',
         'montant'   => (int)$result['montant'],
         'libelle'   => $result['libelle'] ?? 'Achat (photo)',
         'categorie' => $result['categorie'] ?? 'Autre dépense',
         'date'      => $result['date'] ?? date('Y-m-d'),
+    ];
+
+    savePendingConfirmation($db, $user['id'], [
+        'type'        => 'PHOTO_CONFIRM',
+        'transaction' => $tx,
     ]);
 
-    $typeLabel  = ($result['type'] ?? 'DEPENSE') === 'RECETTE' ? 'Recette' : 'Dépense';
+    $typeLabel  = $tx['type'] === 'RECETTE' ? 'Recette' : 'Dépense';
     $confidence = match($result['confidence'] ?? 'medium') {
         'high'   => '',
         'medium' => ' _(détection approximative)_',
         default  => ' _(faible confiance — vérifie)_',
     };
 
-    // Avertissement limite FREE
-    $suffix = '';
-    if ($user['plan'] === 'FREE') {
-        $remaining = 20 - getMonthlyTxCount($db, $user['id']);
-        if ($remaining <= 3) {
-            $suffix = "\n\n_Il te reste $remaining transaction(s) gratuite(s) ce mois._";
-        }
-    }
-
     sendWhatsApp($rawPhone,
-        "✓ *$typeLabel enregistrée depuis le reçu*$confidence\n\n" .
-        fcfa((int)$result['montant']) . " · " . ($result['libelle'] ?? 'Achat') . "\n" .
-        "Catégorie : " . ($result['categorie'] ?? 'Autre') . "\n" .
-        ($result['date'] ? "Date : " . $result['date'] . "\n" : '') .
-        "\n_" . ($result['details'] ?? '') . "_" .
-        $suffix
+        "📋 *J'ai lu ce reçu*$confidence\n\n" .
+        "$typeLabel · " . fcfa($tx['montant']) . "\n" .
+        "Objet : " . $tx['libelle'] . "\n" .
+        "Catégorie : " . $tx['categorie'] . "\n" .
+        ($tx['date'] ? "Date : " . $tx['date'] . "\n" : '') .
+        ($result['details'] ? "\n_" . $result['details'] . "_\n" : '') .
+        "\nC'est correct ? Réponds *OUI* pour enregistrer ou *NON* pour annuler."
     );
+}
+
+
+// ── VOICE CONFIRMATION HELPERS ────────────────────────────────
+function savePendingConfirmation(PDO $db, int $userId, array $data): int {
+    // Annuler toute confirmation en attente précédente
+    $db->prepare("UPDATE pending_validations SET status='CANCELLED' WHERE user_id=? AND status='WAITING'")
+       ->execute([$userId]);
+    $db->prepare("INSERT INTO pending_validations (user_id, temp_data, status) VALUES (?, ?, 'WAITING')")
+       ->execute([$userId, json_encode($data)]);
+    return (int)$db->lastInsertId();
+}
+
+function getPendingConfirmation(PDO $db, int $userId): ?array {
+    $stmt = $db->prepare("SELECT * FROM pending_validations WHERE user_id=? AND status='WAITING' ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$userId]);
+    $row = $stmt->fetch();
+    if (!$row) return null;
+    $data = json_decode($row['temp_data'], true);
+    $type = $data['type'] ?? '';
+    if (!in_array($type, ['VOICE_CONFIRM','PHOTO_CONFIRM'])) return null;
+    return array_merge(['id' => $row['id']], $data);
+}
+// Alias
+function getPendingVoice(PDO $db, int $userId): ?array { return getPendingConfirmation($db, $userId); }
+
+function resolvePending(PDO $db, int $id, string $status): void {
+    $db->prepare("UPDATE pending_validations SET status=? WHERE id=?")->execute([$status, $id]);
+}
+
+function isConfirmation(string $msg): bool {
+    $msg = mb_strtolower(trim($msg));
+    return in_array($msg, ['oui','yes','waaw','ok','okay','o','yep','correct','c'est ça','exactement','d'accord','confirme','valider','valide']);
+}
+
+function isRejection(string $msg): bool {
+    $msg = mb_strtolower(trim($msg));
+    return in_array($msg, ['non','no','deedeet','nope','n','annule','annuler','faux','incorrect','pas ça','pas correct','erreur','refuser','refuse']);
 }
 
 // ── DB HELPERS ────────────────────────────────────────────────
@@ -584,6 +627,49 @@ function processMessage(string $rawPhone, string $msgBody): void {
     if ($isFree) {
         $monthCount = getMonthlyTxCount($db, $user['id']);
         // La limite est vérifiée plus tard, après avoir parsé l'intent
+    }
+
+    // ── Vérifier si une confirmation vocale est en attente ──────
+    $pending = getPendingVoice($db, $user['id']);
+    if ($pending) {
+        $pType = $pending['type'] ?? '';
+
+        if (isConfirmation($msgBody)) {
+            resolvePending($db, $pending['id'], 'CONFIRMED');
+
+            if ($pType === 'VOICE_CONFIRM') {
+                sendWhatsApp($rawPhone, "✓ Transcription confirmée. Je traite ta demande...");
+                $msgBody = $pending['transcription']; // continuer avec le texte transcrit
+
+            } elseif ($pType === 'PHOTO_CONFIRM') {
+                // Enregistrer directement la transaction extraite du reçu
+                $tx = $pending['transaction'];
+                createTransaction($db, $user['id'], $tx);
+                $suffix = '';
+                if ($user['plan'] === 'FREE') {
+                    $rem = 20 - getMonthlyTxCount($db, $user['id']);
+                    if ($rem <= 3) $suffix = "\n\n_Il te reste $rem transaction(s) gratuite(s) ce mois._";
+                }
+                sendWhatsApp($rawPhone,
+                    "✓ *" . ucfirst(strtolower($tx['type'])) . " enregistrée*\n\n" .
+                    fcfa((int)$tx['montant']) . " · " . $tx['libelle'] . "\n" .
+                    "Catégorie : " . $tx['categorie'] . $suffix
+                );
+                return;
+            }
+
+        } elseif (isRejection($msgBody)) {
+            resolvePending($db, $pending['id'], 'CANCELLED');
+            $hint = $pType === 'PHOTO_CONFIRM'
+                ? "Annulé. Renvoie une photo ou tape ta transaction."
+                : "Annulé. Envoie un nouveau vocal ou tape ta transaction.\n\"vendu tissus 25 000\"";
+            sendWhatsApp($rawPhone, $hint);
+            return;
+
+        } else {
+            // Nouveau message — annuler la confirmation en attente et traiter normalement
+            resolvePending($db, $pending['id'], 'CANCELLED');
+        }
     }
 
     // Contexte + prompt
