@@ -145,7 +145,7 @@ function sendWhatsApp(string $to, string $body): void {
     curl_close($ch);
 }
 
-// ── GEMINI ────────────────────────────────────────────────────
+// ── GEMINI TEXT ───────────────────────────────────────────────
 function callGemini(string $prompt): ?array {
     $url  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" . GEMINI_KEY;
     $body = json_encode([
@@ -170,6 +170,173 @@ function callGemini(string $prompt): ?array {
 
     $parsed = json_decode(trim($text), true);
     return is_array($parsed) ? $parsed : null;
+}
+
+// ── GEMINI VISION (OCR reçu photo) ───────────────────────────
+function callGeminiVision(string $imageBase64, string $mimeType): ?array {
+    $OCR_PROMPT = <<<PROMPT
+Tu es un assistant OCR spécialisé dans les reçus commerciaux pour commerçants sénégalais.
+Analyse cette image et extrait les informations comptables.
+
+RÈGLES :
+- Montant toujours en FCFA (XOF). Si une autre devise, convertis mentalement.
+- Type : "DEPENSE" si c'est un achat/reçu de paiement, "RECETTE" si c'est une vente encaissée.
+- Si l'image n'est pas un reçu ou ticket de caisse, met found: false.
+- Si le montant n'est pas lisible, met montant: null.
+- Date : format YYYY-MM-DD. Si absente, mets null.
+- Libelle : nom du commerce ou description courte (max 60 caractères).
+- Categorie : choisis parmi : Achat marchandises, Transport, Loyer, Électricité / Eau, Salaires, Téléphone / Internet, Emballages, Publicité, Taxes / Impôts, Entretien / Réparation, Alimentation, Fournitures bureau, Frais bancaires, Vente marchandises, Vente services, Autre recette, Autre dépense.
+
+Réponds UNIQUEMENT en JSON valide, aucun texte avant ou après :
+{
+  "found": true,
+  "type": "DEPENSE" | "RECETTE",
+  "montant": number | null,
+  "libelle": "string",
+  "categorie": "string",
+  "date": "YYYY-MM-DD" | null,
+  "confidence": "high" | "medium" | "low",
+  "details": "brève description de ce que tu vois sur le reçu"
+}
+PROMPT;
+
+    $url  = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" . GEMINI_KEY;
+    $body = json_encode([
+        'contents' => [[
+            'parts' => [
+                ['text' => $OCR_PROMPT],
+                ['inline_data' => ['mime_type' => $mimeType, 'data' => $imageBase64]],
+            ]
+        ]],
+        'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 512],
+    ]);
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_TIMEOUT        => 30,
+    ]);
+    $resp = curl_exec($ch);
+    if (curl_errno($ch)) { error_log("[GeminiVision] " . curl_error($ch)); curl_close($ch); return null; }
+    curl_close($ch);
+
+    $data = json_decode($resp, true);
+    $text = $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+    $text = preg_replace('/```json|```/i', '', trim($text));
+
+    $parsed = json_decode(trim($text), true);
+    return is_array($parsed) ? $parsed : null;
+}
+
+// ── TÉLÉCHARGE IMAGE TWILIO ───────────────────────────────────
+function downloadTwilioImage(string $mediaUrl): ?string {
+    $ch = curl_init($mediaUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_USERPWD        => TWILIO_SID . ':' . TWILIO_AUTH,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_USERAGENT      => 'SenCompta-IA/1.0',
+    ]);
+    $data = curl_exec($ch);
+    if (curl_errno($ch) || $data === false) {
+        error_log("[TwilioMedia] " . curl_error($ch));
+        curl_close($ch);
+        return null;
+    }
+    curl_close($ch);
+    return base64_encode($data);
+}
+
+// ── TRAITE UNE PHOTO ─────────────────────────────────────────
+function processPhoto(string $rawPhone, string $mediaUrl, string $mimeType): void {
+    $phone = '+' . preg_replace('/\D/', '', $rawPhone);
+
+    $db = getDB();
+    if (!$db) { sendWhatsApp($rawPhone, "Erreur technique. Réessaie dans un instant."); return; }
+
+    $user = getOrCreateUser($db, $phone);
+    if (!$user || !isActive($user)) {
+        sendWhatsApp($rawPhone, "Abonnement requis. " . APP_URL . "/pricing");
+        return;
+    }
+
+    // Limite FREE
+    if ($user['plan'] === 'FREE') {
+        $count = getMonthlyTxCount($db, $user['id']);
+        if ($count >= 20) {
+            sendWhatsApp($rawPhone,
+                "Tu as atteint ta limite gratuite (20 tx/mois).\n\nPasser au Standard : " . APP_URL . "/pricing"
+            );
+            return;
+        }
+    }
+
+    // Signaler que l'analyse est en cours
+    sendWhatsApp($rawPhone, "📷 Photo reçue, j'analyse le reçu...");
+
+    // Télécharger + encoder l'image
+    $imageBase64 = downloadTwilioImage($mediaUrl);
+    if (!$imageBase64) {
+        sendWhatsApp($rawPhone, "Je n'ai pas pu lire l'image. Envoie-la à nouveau ou saisis la transaction manuellement.");
+        return;
+    }
+
+    // Appel Gemini Vision
+    $result = callGeminiVision($imageBase64, $mimeType);
+
+    if (!$result || empty($result['found'])) {
+        sendWhatsApp($rawPhone,
+            "Je ne reconnais pas de reçu dans cette image.\n\n" .
+            "Envoie-moi directement : \"payé [article] [montant]\""
+        );
+        return;
+    }
+
+    if (!$result['montant']) {
+        sendWhatsApp($rawPhone,
+            "J'ai vu un reçu mais le montant n'est pas lisible.\n\n" .
+            "Dis-moi : \"payé " . ($result['libelle'] ?? 'achat') . " [montant]\""
+        );
+        return;
+    }
+
+    // Enregistrer la transaction
+    createTransaction($db, $user['id'], [
+        'type'      => $result['type'] ?? 'DEPENSE',
+        'montant'   => (int)$result['montant'],
+        'libelle'   => $result['libelle'] ?? 'Achat (photo)',
+        'categorie' => $result['categorie'] ?? 'Autre dépense',
+        'date'      => $result['date'] ?? date('Y-m-d'),
+    ]);
+
+    $typeLabel  = ($result['type'] ?? 'DEPENSE') === 'RECETTE' ? 'Recette' : 'Dépense';
+    $confidence = match($result['confidence'] ?? 'medium') {
+        'high'   => '',
+        'medium' => ' _(détection approximative)_',
+        default  => ' _(faible confiance — vérifie)_',
+    };
+
+    // Avertissement limite FREE
+    $suffix = '';
+    if ($user['plan'] === 'FREE') {
+        $remaining = 20 - getMonthlyTxCount($db, $user['id']);
+        if ($remaining <= 3) {
+            $suffix = "\n\n_Il te reste $remaining transaction(s) gratuite(s) ce mois._";
+        }
+    }
+
+    sendWhatsApp($rawPhone,
+        "✓ *$typeLabel enregistrée depuis le reçu*$confidence\n\n" .
+        fcfa((int)$result['montant']) . " · " . ($result['libelle'] ?? 'Achat') . "\n" .
+        "Catégorie : " . ($result['categorie'] ?? 'Autre') . "\n" .
+        ($result['date'] ? "Date : " . $result['date'] . "\n" : '') .
+        "\n_" . ($result['details'] ?? '') . "_" .
+        $suffix
+    );
 }
 
 // ── DB HELPERS ────────────────────────────────────────────────
@@ -592,14 +759,34 @@ function processMessage(string $rawPhone, string $msgBody): void {
 
 // ── ENTRY POINT ───────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $body = $_POST['Body'] ?? '';
-    $from = str_replace('whatsapp:', '', $_POST['From'] ?? '');
+    $from      = str_replace('whatsapp:', '', $_POST['From'] ?? '');
+    $body      = trim($_POST['Body'] ?? '');
+    $numMedia  = (int)($_POST['NumMedia'] ?? 0);
 
-    if ($body && $from) {
-        // Traitement asynchrone — répondre immédiatement à Twilio
-        register_shutdown_function(function() use ($from, $body) {
-            processMessage($from, $body);
-        });
+    if ($from) {
+        if ($numMedia > 0) {
+            // ── MESSAGE AVEC PHOTO ───────────────────────────
+            $mediaUrl      = $_POST['MediaUrl0']         ?? '';
+            $mediaType     = $_POST['MediaContentType0'] ?? 'image/jpeg';
+            $isImage       = str_starts_with($mediaType, 'image/');
+
+            if ($isImage && $mediaUrl) {
+                register_shutdown_function(function() use ($from, $mediaUrl, $mediaType) {
+                    processPhoto($from, $mediaUrl, $mediaType);
+                });
+            } else {
+                // Fichier non-image (PDF, audio, etc.) — ignorer ou informer
+                register_shutdown_function(function() use ($from) {
+                    sendWhatsApp($from, "Envoie-moi une photo de ton reçu ou ticket de caisse, ou saisis ta transaction en texte.");
+                });
+            }
+
+        } elseif ($body) {
+            // ── MESSAGE TEXTE ────────────────────────────────
+            register_shutdown_function(function() use ($from, $body) {
+                processMessage($from, $body);
+            });
+        }
     }
 
     echo '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
