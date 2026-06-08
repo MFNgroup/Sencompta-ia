@@ -8,11 +8,12 @@ header('Content-Type: text/xml');
 header('Access-Control-Allow-Origin: *');
 
 // ── CONFIG ───────────────────────────────────────────────────
-define('DB_HOST',     getenv('DB_HOST')     ?: 'gondola.proxy.rlwy.net');
-define('DB_PORT',     getenv('DB_PORT')     ?: '21728');
-define('DB_NAME',     getenv('DB_NAME')     ?: 'railway');
-define('DB_USER',     getenv('DB_USER')     ?: '');
-define('DB_PASS',     getenv('DB_PASS')     ?: '');
+// DB en localhost (webhook sur même serveur Hostinger)
+define('DB_HOST', 'localhost');
+define('DB_PORT', '3306');
+define('DB_NAME', 'u824414783_Sencomptaia');
+define('DB_USER', 'u824414783_Sencomptaia');
+define('DB_PASS', 'METTRE_MOT_DE_PASSE_ICI');
 define('GEMINI_KEY',  getenv('GEMINI_API_KEY') ?: '');
 define('TWILIO_SID',  getenv('TWILIO_ACCOUNT_SID') ?: '');
 define('TWILIO_AUTH', getenv('TWILIO_AUTH_TOKEN')  ?: '');
