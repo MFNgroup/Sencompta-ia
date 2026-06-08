@@ -1,0 +1,97 @@
+-- SenCompta IA — Schema complet Hostinger MySQL
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+CREATE TABLE IF NOT EXISTS users (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  phone VARCHAR(20) NOT NULL UNIQUE,
+  boutique_name VARCHAR(120) NOT NULL DEFAULT 'Ma Boutique',
+  ninea VARCHAR(30) NULL,
+  adresse VARCHAR(255) NULL,
+  ville VARCHAR(80) NULL DEFAULT 'Dakar',
+  telephone VARCHAR(20) NULL,
+  plan ENUM('FREE','STANDARD','PREMIUM') NOT NULL DEFAULT 'FREE',
+  subscription_expiry DATETIME NULL,
+  last_payment_id VARCHAR(100) NULL,
+  magic_token VARCHAR(64) NULL,
+  magic_token_expiry DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_phone (phone),
+  INDEX idx_plan (plan)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS transactions (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  type ENUM('RECETTE','DEPENSE') NOT NULL,
+  montant DECIMAL(14,0) NOT NULL,
+  libelle VARCHAR(255) NOT NULL,
+  categorie VARCHAR(80) NOT NULL DEFAULT 'Autre',
+  source ENUM('WHATSAPP','WEB','OCR','VOICE') NOT NULL DEFAULT 'WHATSAPP',
+  date DATE NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_tx_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_tx_user_date (user_id, date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS debts (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  client_name VARCHAR(120) NOT NULL,
+  amount DECIMAL(14,0) NOT NULL,
+  description TEXT NULL,
+  due_date DATE NULL,
+  status ENUM('PENDING','PAID','UNPAID') NOT NULL DEFAULT 'PENDING',
+  paid_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_debt_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_debt_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pending_validations (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  temp_data TEXT NOT NULL,
+  status ENUM('WAITING','CONFIRMED','CANCELLED') NOT NULL DEFAULT 'WAITING',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_pv_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_pv_user_status (user_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNSIGNED NOT NULL,
+  numero VARCHAR(30) NOT NULL,
+  client_name VARCHAR(120) NOT NULL,
+  client_tel VARCHAR(20) NULL,
+  client_ninea VARCHAR(30) NULL,
+  client_adresse VARCHAR(255) NULL,
+  date_emission DATE NOT NULL,
+  date_echeance DATE NULL,
+  tva_applicable TINYINT(1) NOT NULL DEFAULT 0,
+  montant_ht DECIMAL(14,0) NOT NULL DEFAULT 0,
+  montant_tva DECIMAL(14,0) NOT NULL DEFAULT 0,
+  montant_ttc DECIMAL(14,0) NOT NULL DEFAULT 0,
+  statut ENUM('BROUILLON','ENVOYEE','PAYEE','ANNULEE') NOT NULL DEFAULT 'BROUILLON',
+  notes TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_inv_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_inv_user (user_id),
+  INDEX idx_inv_date (date_emission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  invoice_id INT UNSIGNED NOT NULL,
+  description VARCHAR(255) NOT NULL,
+  quantite DECIMAL(10,2) NOT NULL DEFAULT 1,
+  prix_unitaire DECIMAL(14,0) NOT NULL,
+  total DECIMAL(14,0) NOT NULL,
+  CONSTRAINT fk_item_inv FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+  INDEX idx_item_inv (invoice_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+SET FOREIGN_KEY_CHECKS = 1;
+SELECT 'SenCompta IA — Schema installe avec succes' AS statut;
