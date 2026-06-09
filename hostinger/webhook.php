@@ -506,7 +506,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Répondre immédiatement à Meta (200 obligatoire en < 5s)
     http_response_code(200);
     echo json_encode(['status' => 'ok']);
-    fastcgi_finish_request(); // Ferme la connexion HTTP, continue le traitement
+    if (ob_get_level()) ob_end_flush();
+    flush();
+    if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
 
     // Traitement asynchrone
     if ($type === 'text') {
