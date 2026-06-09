@@ -3,9 +3,6 @@
 // SenCompta IA — webhook.php (Hostinger) — Meta Cloud API
 // ============================================================
 
-header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-
 // ── CONFIG ───────────────────────────────────────────────────
 define('DB_HOST',          'localhost');
 define('DB_PORT',          '3306');
@@ -25,6 +22,7 @@ define('APP_URL',          'https://sencompta-ia-fypb.vercel.app');
 
 // ── VERIFICATION META WEBHOOK (GET) ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    header('Content-Type: text/plain');
     if (
         ($_GET['hub_mode']         ?? '') === 'subscribe' &&
         ($_GET['hub_verify_token'] ?? '') === VERIFY_TOKEN
@@ -32,10 +30,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         echo $_GET['hub_challenge'] ?? '';
     } else {
         http_response_code(403);
-        echo 'Forbidden';
+        echo 'Token invalide';
     }
     exit;
 }
+
+// Headers pour les requetes POST
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
 
 // ── CATEGORIES ───────────────────────────────────────────────
 $ALL_CATS = 'Vente marchandises, Vente services, Prestation, Acompte client, Remboursement reçu, Autre recette, Achat marchandises, Transport, Loyer, Électricité / Eau, Salaires, Téléphone / Internet, Emballages, Publicité, Taxes / Impôts, Entretien / Réparation, Alimentation, Fournitures bureau, Frais bancaires, Autre dépense';
