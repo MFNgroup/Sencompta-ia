@@ -46,37 +46,43 @@ $ALL_CATS = 'Vente marchandises, Vente services, Prestation, Acompte client, Rem
 $SYSTEM_PROMPT = "Tu es SenCompta IA, l'assistant comptable intelligent pour les commercants senegalais. Tu communiques via WhatsApp.
 
 PERSONNALITE :
-- Chaleureux, direct, comme un ami de confiance
+- Tu es chaleureux, direct, comme un ami de confiance qui connait la comptabilite
 - Tu tutoies l'utilisateur naturellement
-- Parfaitement bilingue francais-wolof — tu reponds dans la langue du message
-- Tu utilises librement : waaw, dekk bi, naka nga def, bu baax na, yegel na
-- Tu ne mentionnes JAMAIS Gemini, Google ou tout autre IA tiers
+- Tu reponds en francais, wolof, ou melange (franwolof) selon la langue du message
+- Tu utilises : waaw, degg na, naka nga def, bu baax na, dama dem
+- Tu ne mentionnes JAMAIS d'autres IA (Gemini, Google, etc.)
+- Tu ignores totalement la casse (majuscules/minuscules) et les variantes orthographiques
 
-INTENTS RECONNUS (JSON uniquement) :
-1. TRANSACTION — recette ou depense
-2. BILAN — solde et analyse (periodes: TODAY, 7, 30, 365)
-3. HISTORIQUE — liste des transactions
-4. DETTES — creances clients
-5. FACTURE_GUIDE — demande de facture sans details suffisants
-6. FACTURE_RAPIDE — facture avec client + montant + description
-7. ANNULER — annulation en attente
-8. SALUTATION — bonjour etc.
-9. AIDE — aide, help
-10. INCONNU — tout le reste
+DETECTION D'INTENT - sois TRES flexible et genereux dans ta detection :
 
-FORMAT JSON STRICT (aucun texte avant ou apres) :
-{
-  \"intent\": \"TRANSACTION|BILAN|HISTORIQUE|DETTES|FACTURE_GUIDE|FACTURE_RAPIDE|ANNULER|INCONNU|SALUTATION|AIDE\",
-  \"transaction\": {\"type\":\"RECETTE|DEPENSE\",\"montant\":0,\"libelle\":\"\",\"categorie\":\"\",\"date\":\"YYYY-MM-DD\"},
-  \"dette\": {\"clientName\":\"\",\"amount\":0,\"description\":\"\"},
-  \"facture_rapide\": {\"clientName\":\"\",\"description\":\"\",\"montant\":0,\"tva\":false},
-  \"periode\": \"TODAY|7|30|365\",
-  \"message_utilisateur\": \"\",
-  \"needs_confirmation\": false,
-  \"langue_detectee\": \"fr|wo|mix\"
-}
+TRANSACTION : tout message qui parle d'argent recu ou depense
+  Recette : vente, vendu, recu, encaisse, jaay, yegel, bind, client a paye, j'ai fait, on m'a donne
+  Depense : paye, achete, depense, jend, fey, j'ai mis, j'ai sorti, j'ai donne
+  IMPORTANT : meme sans mot-cle, si un montant est mentionne avec un contexte commercial -> TRANSACTION
 
-Categories disponibles : Vente marchandises, Vente services, Prestation, Acompte client, Remboursement recu, Autre recette, Achat marchandises, Transport, Loyer, Electricite/Eau, Salaires, Telephone/Internet, Emballages, Publicite, Taxes/Impots, Entretien/Reparation, Alimentation, Fournitures bureau, Frais bancaires, Autre depense";
+BILAN : l'utilisateur veut connaitre son solde, sa situation financiere
+  Mots : solde, Solde, SOLDE, bilan, Bilan, BILAN, combien, situation, argent, xaalis, naka, resume, compte rendu, mon argent, ca donne quoi, j'ai combien, resultat
+
+HISTORIQUE : l'utilisateur veut voir ses dernieres transactions
+  Mots : historique, liste, dernieres, transactions, qu'est-ce que j'ai fait, mes operations
+
+DETTES : creances, qui me doit de l'argent
+  Mots : doit, dette, creance, credit, bokk, jox credit, mes creanciers, qui me doit
+
+FACTURE : creer une facture officielle
+  Mots : facture, facturer, recu officiel, document officiel, invoice
+
+SALUTATION : bonjour, salut, bonsoir, salam, hello, hi, cc
+AIDE : aide, help, comment, qu'est-ce que tu fais, c'est quoi ca
+
+REGLES CRITIQUES :
+- Reponds UNIQUEMENT en JSON valide, rien avant, rien apres
+- Si montant ambigu -> needs_confirmation: true
+- Categorie par defaut si pas clair : 'Autre recette' ou 'Autre depense'
+- message_utilisateur : reponse en wolof ou francais selon la langue detectee, naturelle et chaleureuse
+
+FORMAT JSON :
+{\"intent\":\"TRANSACTION|BILAN|HISTORIQUE|DETTES|FACTURE_GUIDE|FACTURE_RAPIDE|ANNULER|INCONNU|SALUTATION|AIDE\",\"transaction\":{\"type\":\"RECETTE|DEPENSE\",\"montant\":0,\"libelle\":\"\",\"categorie\":\"\",\"date\":\"YYYY-MM-DD\"},\"dette\":{\"clientName\":\"\",\"amount\":0,\"description\":\"\"},\"facture_rapide\":{\"clientName\":\"\",\"description\":\"\",\"montant\":0,\"tva\":false},\"periode\":\"TODAY|7|30|365\",\"message_utilisateur\":\"\",\"needs_confirmation\":false,\"langue_detectee\":\"fr|wo|mix\"}";
 
 // ── ENVOYER UN MESSAGE WHATSAPP (Meta Cloud API) ──────────────
 function sendWhatsApp(string $to, string $body): void {
@@ -249,8 +255,17 @@ function fcfa(int $n): string {
 
 // ── PENDING CONFIRMATIONS ─────────────────────────────────────
 function savePendingConfirmation(PDO $db, int $userId, array $data): void {
-    $db->prepare("UPDATE pending_validations SET status='CANCELLED' WHERE user_id=? AND status='WAITING'")->execute([$userId]);
-    $db->prepare("INSERT INTO pending_validations (user_id,temp_data,status) VALUES (?,?,'WAITING')")->execute([$userId, json_encode($data)]);
+    try {
+        $db->prepare("UPDATE pending_validations SET status='CANCELLED' WHERE user_id=? AND status='WAITING'")->execute([$userId]);
+        $db->prepare("INSERT INTO pending_validations (user_id,temp_data,status) VALUES (?,?,'WAITING')")->execute([$userId, json_encode($data)]);
+    } catch (\PDOException $e) {
+        error_log('[savePending error] ' . $e->getMessage());
+        // Table manquante — creer et reessayer
+        if (str_contains($e->getMessage(), "doesn't exist")) {
+            $db->exec("CREATE TABLE IF NOT EXISTS pending_validations (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, temp_data TEXT NOT NULL, status ENUM('WAITING','CONFIRMED','CANCELLED') NOT NULL DEFAULT 'WAITING', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_pv (user_id, status)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+            $db->prepare("INSERT INTO pending_validations (user_id,temp_data,status) VALUES (?,?,'WAITING')")->execute([$userId, json_encode($data)]);
+        }
+    }
 }
 
 function getPendingConfirmation(PDO $db, int $userId): ?array {
@@ -267,12 +282,19 @@ function resolvePending(PDO $db, int $id, string $status): void {
     $db->prepare('UPDATE pending_validations SET status=? WHERE id=?')->execute([$status, $id]);
 }
 
+
+// ── NORMALISATION MESSAGE ─────────────────────────────────────
+function normalizeMsg(string $msg): string {
+    // Minuscules + trim pour la détection OUI/NON
+    return mb_strtolower(trim($msg), 'UTF-8');
+}
+
 function isConfirmation(string $msg): bool {
-    return in_array(mb_strtolower(trim($msg)), ['oui','yes','waaw','ok','okay','o','correct','confirme','valide','d\'accord','exactement']);
+    return in_array(normalizeMsg($msg), ['oui','yes','waaw','ok','okay','o','correct','confirme','valide','d\'accord','exactement']);
 }
 
 function isRejection(string $msg): bool {
-    return in_array(mb_strtolower(trim($msg)), ['non','no','deedeet','nope','n','annule','annuler','faux','incorrect','pas ça','refuser']);
+    return in_array(normalizeMsg($msg), ['non','no','deedeet','nope','n','annule','annuler','faux','incorrect','pas ça','refuser']);
 }
 
 function buildContext(PDO $db, array $user): string {
@@ -293,8 +315,19 @@ function callGemini(string $prompt): ?array {
     if (curl_errno($ch)) { error_log('[Gemini] '.curl_error($ch)); curl_close($ch); return null; }
     curl_close($ch);
     $data = json_decode($resp, true);
-    $text = preg_replace('/```json|```/i', '', trim($data['candidates'][0]['content']['parts'][0]['text'] ?? ''));
-    $parsed = json_decode(trim($text), true);
+    $raw  = trim($data['candidates'][0]['content']['parts'][0]['text'] ?? '');
+    // Extraction robuste du JSON
+    $text = preg_replace('/^```json\s*/i', '', $raw);
+    $text = preg_replace('/\s*```$/i',     '', $text);
+    $text = trim($text);
+    // Si le JSON n'est pas au debut, chercher le premier {
+    if (!str_starts_with($text, '{')) {
+        $start = strpos($text, '{');
+        $end   = strrpos($text, '}');
+        if ($start !== false && $end !== false) $text = substr($text, $start, $end - $start + 1);
+    }
+    $parsed = json_decode($text, true);
+    if (!is_array($parsed)) error_log('[Gemini parse fail] ' . substr($raw, 0, 200));
     return is_array($parsed) ? $parsed : null;
 }
 
