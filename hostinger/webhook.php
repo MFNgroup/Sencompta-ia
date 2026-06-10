@@ -171,7 +171,8 @@ function getOrCreateUser(PDO $db, string $phone): ?array {
 
 function isActive(array $user): bool {
     if ($user['plan'] === 'FREE') return true;
-    if (!$user['subscription_expiry']) return false;
+    // NULL expiry sur plan payant = activé manuellement (admin/test) → actif
+    if (!$user['subscription_expiry']) return true;
     return strtotime($user['subscription_expiry']) > time();
 }
 
@@ -371,7 +372,7 @@ function processMessage(string $phone, string $msgBody): void {
         return;
     }
 
-    if (!isActive($user)) { sendWhatsApp($phone, 'Abonnement expiré. Renouvelle : ' . APP_URL . '/pricing'); return; }
+    if (!isActive($user)) { sendWhatsApp($phone, "Ton abonnement SenCompta IA est expiré.\n\nRenouvelle ici pour continuer : " . APP_URL . "/pricing"); return; }
 
     // Vérifier confirmation en attente
     $pending = getPendingConfirmation($db, $user['id']);
@@ -422,7 +423,10 @@ function processMessage(string $phone, string $msgBody): void {
             $periode = $parsed['periode'] ?? '30';
             $kpis = $periode === 'TODAY' ? getKPIsToday($db, $user['id']) : getKPIs($db, $user['id'], (int)$periode);
             $label = match($periode) { 'TODAY' => "aujourd'hui", '7' => '7 derniers jours', '365' => 'cette année', default => 'ce mois' };
-            sendWhatsApp($phone, "*Bilan — $label*\n\nRecettes  " . fcfa($kpis['ca']) . "\nDépenses  " . fcfa($kpis['charges']) . "\n━━━━━━━━━━━━━━\nNet       " . ($kpis['net'] >= 0 ? '+' : '') . fcfa($kpis['net']) . (canDashboard($user) ? "\n\nDashboard : " . APP_URL . "/dashboard" : ''));
+            $link = canDashboard($user)
+        ? "\n\nDashboard : " . APP_URL . "/dashboard"
+        : "\n\n📊 _Dashboard & factures disponibles en plan Standard_\n" . APP_URL . "/pricing";
+            sendWhatsApp($phone, "*Bilan — $label*\n\nRecettes  " . fcfa($kpis['ca']) . "\nDépenses  " . fcfa($kpis['charges']) . "\n━━━━━━━━━━━━━━\nNet       " . ($kpis['net'] >= 0 ? '+' : '') . fcfa($kpis['net']) . $link);
             break;
 
         case 'HISTORIQUE':
@@ -460,7 +464,10 @@ function processMessage(string $phone, string $msgBody): void {
 
         case 'SALUTATION':
             $kpis = getKPIs($db, $user['id'], 30);
-            $note = $isFree ? "\n\n_Plan gratuit — " . (20 - getMonthlyTxCount($db, $user['id'])) . " transactions restantes ce mois_" : '';
+            $remaining = $isFree ? (20 - getMonthlyTxCount($db, $user['id'])) : 0;
+            $note = $isFree
+                ? "\n\n_Plan gratuit : $remaining transaction(s) restante(s) ce mois_\n_Dashboard & factures : " . APP_URL . "/pricing_"
+                : "\n\nDashboard : " . APP_URL . "/dashboard";
             sendWhatsApp($phone, "Bonjour ! Je suis SenCompta IA.\n\nCe mois : *" . fcfa($kpis['ca']) . "* de recettes\n\n- Enregistrer une vente ou dépense\n- Afficher ton bilan\n- Créer une facture\n- Suivre tes créances" . $note);
             break;
 
