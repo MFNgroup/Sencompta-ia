@@ -14,6 +14,7 @@ define('DB_PASS',          'METTRE_MOT_DE_PASSE_ICI');
 define('META_PHONE_ID',    '988352281037795');
 define('META_TOKEN',       'METTRE_ACCESS_TOKEN_ICI'); // Token temporaire ou permanent
 define('META_API_VERSION', 'v19.0');
+define('GEMINI_MODEL', 'gemini-1.5-flash'); // 1500 req/jour gratuit
 define('META_API_URL',     'https://graph.facebook.com/' . META_API_VERSION);
 
 define('GEMINI_KEY',       'METTRE_GEMINI_API_KEY_ICI');
@@ -307,7 +308,7 @@ function buildContext(PDO $db, array $user): string {
 
 // ── GEMINI TEXT ───────────────────────────────────────────────
 function callGemini(string $prompt): ?array {
-    $url  = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . GEMINI_KEY;
+    $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent?key=' . GEMINI_KEY;
     $body = json_encode(['contents' => [['parts' => [['text' => $prompt]]]], 'generationConfig' => ['temperature' => 0.3, 'maxOutputTokens' => 1024]]);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => $body, CURLOPT_TIMEOUT => 20]);
@@ -315,6 +316,11 @@ function callGemini(string $prompt): ?array {
     if (curl_errno($ch)) { error_log('[Gemini] '.curl_error($ch)); curl_close($ch); return null; }
     curl_close($ch);
     $data = json_decode($resp, true);
+    // Gestion quota 429 — log et retour null propre
+    if ($httpCode === 429) {
+        error_log('[Gemini 429] Quota atteint. Passer sur plan payant : aistudio.google.com');
+        return null;
+    }
     $raw  = trim($data['candidates'][0]['content']['parts'][0]['text'] ?? '');
     // Extraction robuste du JSON
     $text = preg_replace('/^```json\s*/i', '', $raw);
@@ -335,7 +341,7 @@ function callGemini(string $prompt): ?array {
 
 // ── GEMINI AUDIO ──────────────────────────────────────────────
 function transcribeAudio(string $audioBase64, string $mimeType): ?string {
-    $url  = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . GEMINI_KEY;
+    $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent?key=' . GEMINI_KEY;
     $body = json_encode(['contents' => [['parts' => [['text' => 'Transcris ce message vocal. La personne parle en wolof, français, ou les deux. Retourne UNIQUEMENT la transcription brute. Si inaudible, réponds : [inaudible].'], ['inline_data' => ['mime_type' => $mimeType, 'data' => $audioBase64]]]]], 'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 300]]);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => $body, CURLOPT_TIMEOUT => 25]);
@@ -348,7 +354,7 @@ function transcribeAudio(string $audioBase64, string $mimeType): ?string {
 // ── GEMINI VISION ─────────────────────────────────────────────
 function callGeminiVision(string $imageBase64, string $mimeType): ?array {
     $OCR = 'Tu es un assistant OCR pour reçus sénégalais. Analyse cette image et extrait les infos comptables. Montant en FCFA. Type: DEPENSE si achat, RECETTE si vente. Réponds UNIQUEMENT en JSON: {"found":true,"type":"DEPENSE|RECETTE","montant":0,"libelle":"","categorie":"","date":"YYYY-MM-DD|null","confidence":"high|medium|low","details":""}';
-    $url  = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . GEMINI_KEY;
+    $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent?key=' . GEMINI_KEY;
     $body = json_encode(['contents' => [['parts' => [['text' => $OCR], ['inline_data' => ['mime_type' => $mimeType, 'data' => $imageBase64]]]]], 'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 512]]);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => $body, CURLOPT_TIMEOUT => 30]);
@@ -533,7 +539,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($payload['_debug_gemini'])) {
         if (($payload['secret'] ?? '') !== VERIFY_TOKEN) { http_response_code(403); exit; }
         header('Content-Type: application/json');
-        $url  = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . GEMINI_KEY;
+        $url  = 'https://generativelanguage.googleapis.com/v1beta/models/' . GEMINI_MODEL . ':generateContent?key=' . GEMINI_KEY;
         $body = json_encode(['contents' => [['parts' => [['text' => 'Reponds uniquement: {"intent":"SALUTATION","message_utilisateur":"Bonjour!"}']]]], 'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 100]]);
         $ch = curl_init($url);
         curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => $body, CURLOPT_TIMEOUT => 15]);
