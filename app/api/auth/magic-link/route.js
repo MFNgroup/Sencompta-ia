@@ -56,7 +56,7 @@ export async function POST(req) {
             'Content-Type':     'application/json',
             'X-Webhook-Secret': webhookSecret,
           },
-          body: JSON.stringify({ to: phone, body: message }),
+          body: JSON.stringify({ to: phone, body: message, secret: webhookSecret }),
         });
         sent = res.ok;
         if (!sent) {

@@ -88,7 +88,7 @@ FORMAT JSON :
 function sendWhatsApp(string $to, string $body): void {
     // Nettoyer le numéro — Meta veut format international sans +
     $to = preg_replace('/\D/', '', $to);
-    if (str_starts_with($to, '00')) $to = substr($to, 2);
+    if (strpos($to, '00') === 0) $to = substr($to, 2);
 
     $url  = META_API_URL . '/' . META_PHONE_ID . '/messages';
     $data = json_encode([
@@ -261,7 +261,7 @@ function savePendingConfirmation(PDO $db, int $userId, array $data): void {
     } catch (\PDOException $e) {
         error_log('[savePending error] ' . $e->getMessage());
         // Table manquante — creer et reessayer
-        if (str_contains($e->getMessage(), "doesn't exist")) {
+        if (strpos($e->getMessage(), "doesn't exist") !== false) {
             $db->exec("CREATE TABLE IF NOT EXISTS pending_validations (id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, user_id INT UNSIGNED NOT NULL, temp_data TEXT NOT NULL, status ENUM('WAITING','CONFIRMED','CANCELLED') NOT NULL DEFAULT 'WAITING', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, INDEX idx_pv (user_id, status)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
             $db->prepare("INSERT INTO pending_validations (user_id,temp_data,status) VALUES (?,?,'WAITING')")->execute([$userId, json_encode($data)]);
         }
@@ -321,7 +321,7 @@ function callGemini(string $prompt): ?array {
     $text = preg_replace('/\s*```$/i',     '', $text);
     $text = trim($text);
     // Si le JSON n'est pas au debut, chercher le premier {
-    if (!str_starts_with($text, '{')) {
+    if (!strpos($text, '{') === 0) {
         $start = strpos($text, '{');
         $end   = strrpos($text, '}');
         if ($start !== false && $end !== false) $text = substr($text, $start, $end - $start + 1);

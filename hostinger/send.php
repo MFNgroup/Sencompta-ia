@@ -10,10 +10,13 @@ header('Access-Control-Allow-Headers: Content-Type, X-Webhook-Secret');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); echo json_encode(['error' => 'Method not allowed']); exit; }
 
-// Vérification du secret
-$secret = $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
-define('WEBHOOK_SECRET', getenv('WEBHOOK_SECRET') ?: 'sencompta-webhook-2025');
-if ($secret !== WEBHOOK_SECRET) {
+// Vérification du secret (dans le body ou en header)
+define('WEBHOOK_SECRET', 'sencompta-webhook-2025');
+$rawInput = file_get_contents('php://input');
+$inputData = json_decode($rawInput, true);
+$secretHeader = $_SERVER['HTTP_X_WEBHOOK_SECRET'] ?? '';
+$secretBody   = $inputData['secret'] ?? '';
+if ($secretHeader !== WEBHOOK_SECRET && $secretBody !== WEBHOOK_SECRET) {
     http_response_code(403);
     echo json_encode(['error' => 'Unauthorized']);
     exit;
@@ -23,7 +26,7 @@ define('META_PHONE_ID', '988352281037795');
 define('META_TOKEN',    'METTRE_ACCESS_TOKEN_ICI');
 define('META_API_URL',  'https://graph.facebook.com/v19.0');
 
-$input = json_decode(file_get_contents('php://input'), true);
+$input = $inputData; // déjà parsé plus haut
 $to    = preg_replace('/\D/', '', $input['to']   ?? '');
 $body  = trim($input['body'] ?? '');
 
