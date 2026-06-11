@@ -327,7 +327,9 @@ function callGemini(string $prompt): ?array {
         if ($start !== false && $end !== false) $text = substr($text, $start, $end - $start + 1);
     }
     $parsed = json_decode($text, true);
-    if (!is_array($parsed)) error_log('[Gemini parse fail] ' . substr($raw, 0, 200));
+    if (!is_array($parsed)) {
+        error_log('[Gemini FAIL] httpCode=' . $httpCode . ' raw=' . substr($raw, 0, 300));
+    }
     return is_array($parsed) ? $parsed : null;
 }
 
@@ -513,10 +515,35 @@ function processMessage(string $phone, string $msgBody): void {
     }
 }
 
-// ── ENTRY POINT (POST — Meta JSON) ───────────────────────────
+// ── ENTRY POINT (POST — Meta JSON + send direct) ─────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rawBody = file_get_contents('php://input');
     $payload = json_decode($rawBody, true);
+
+    // Mode envoi direct depuis Vercel (remplace send.php)
+    if (isset($payload['_send_only'])) {
+        $secret = $payload['secret'] ?? '';
+        if ($secret !== VERIFY_TOKEN) { http_response_code(403); echo json_encode(['error' => 'Unauthorized']); exit; }
+        sendWhatsApp($payload['to'] ?? '', $payload['body'] ?? '');
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    // Mode debug Gemini (appel direct)
+    if (isset($payload['_debug_gemini'])) {
+        if (($payload['secret'] ?? '') !== VERIFY_TOKEN) { http_response_code(403); exit; }
+        header('Content-Type: application/json');
+        $url  = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . GEMINI_KEY;
+        $body = json_encode(['contents' => [['parts' => [['text' => 'Reponds uniquement: {"intent":"SALUTATION","message_utilisateur":"Bonjour!"}']]]], 'generationConfig' => ['temperature' => 0.1, 'maxOutputTokens' => 100]]);
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => $body, CURLOPT_TIMEOUT => 15]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err  = curl_error($ch);
+        curl_close($ch);
+        echo json_encode(['http_code' => $code, 'curl_error' => $err ?: null, 'gemini_key_ok' => strlen(GEMINI_KEY) > 10, 'raw' => json_decode($resp, true)]);
+        exit;
+    }
 
     // Vérifier que c'est bien un message WhatsApp
     if (($payload['object'] ?? '') !== 'whatsapp_business_account') {

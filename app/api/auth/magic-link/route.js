@@ -45,26 +45,25 @@ export async function POST(req) {
     // Envoi via Hostinger send.php
     const webhookUrl    = process.env.WEBHOOK_URL || '';
     const webhookSecret = process.env.WEBHOOK_SECRET || 'sencompta-webhook-2025';
-    const sendUrl       = webhookUrl.replace('webhook.php', 'send.php');
 
     let sent = false;
-    if (sendUrl && sendUrl !== webhookUrl) {
+    if (webhookUrl) {
       try {
-        const res = await fetch(sendUrl, {
+        const res = await fetch(webhookUrl, {
           method:  'POST',
-          headers: {
-            'Content-Type':     'application/json',
-            'X-Webhook-Secret': webhookSecret,
-          },
-          body: JSON.stringify({ to: phone, body: message, secret: webhookSecret }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            _send_only: true,
+            to:     phone,
+            body:   message,
+            secret: webhookSecret,
+          }),
         });
-        sent = res.ok;
-        if (!sent) {
-          const errBody = await res.text();
-          console.error('[send.php error]', res.status, errBody);
-        }
+        const data = await res.json().catch(() => ({}));
+        sent = data.ok === true;
+        if (!sent) console.error('[send error]', res.status, data);
       } catch (e) {
-        console.error('[send.php fetch error]', e.message);
+        console.error('[send fetch error]', e.message);
       }
     }
 
